@@ -4,84 +4,75 @@ using UnityEngine.InputSystem;
 
 public class PlayerController : MonoBehaviour
 {
-    Rigidbody rb;
-    Vector2 inputVector;
-    Animator animator;
-    LevelSystem levelSystem;
-
-
-    [Header("Movement Settings")]
+    [Header("Player Settings")]
     [SerializeField] float moveSpeed = 5f;
     [SerializeField] float rotationSpeed = 720f;
-    [SerializeField] float jumpForce = 15f;
-    [SerializeField] Camera mainCamera;
+    [SerializeField] float health = 100;
+    [SerializeField] float healthRegeneration = 10;
 
-    [Header("Animation Settings")]
+    [Header("VFX Settings")]
     [SerializeField] ParticleSystem levelUpParticle;
 
-    [Header("Player Stats")]
-    [SerializeField] float attackSpeed;
-    [SerializeField] float damage;
+    [Header("Attacking")]
+    [SerializeField] float attackDistance = 3f;
+    [SerializeField] float attackDelay = 0.5f;
+    [SerializeField] float attackSpeed = 1f;
+    [SerializeField] float attackDamage = 1f;
 
     [Header("References")]
     [SerializeField] InputActionReference moveAction;
-    [SerializeField] InputActionReference jumpAction;
+    [SerializeField] InputActionReference attackAction;
 
 
+    const string IDLE = "Idle";
+    const string RUNNING = "RunForward";
+    const string ATTACK_1 = "MeeleeAttack_OneHanded";
 
+    Camera mainCamera;
+    Rigidbody rb;
+    Animator animator;
+    LevelSystem levelSystem;
+    Vector2 inputVector;
+    Vector3 moveDirection;
+    HealthSystem healthSystem;
+
+    bool attacking = false;
+    bool readyToAttack = true;
     bool isGrounded;
-    [SerializeField] float gravityModifier = 4;
+    int attackCount;
+    float gravityModifier = 4;
+    string currentAnimationState;
 
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
         animator = GetComponent<Animator>();
+
         Physics.gravity *= gravityModifier;
-
-        if (mainCamera == null)
-        {
-            mainCamera = Camera.main;
-        }
-    }
-
-
-    public void SetLevelSystem(LevelSystem levelSystem)
-    {
-        this.levelSystem = levelSystem;
-
-        levelSystem.OnLevelChanged += LevelSystem_OnLevelChanged;
-    }
-
-    void LevelSystem_OnLevelChanged(object sender, EventArgs e)
-    {
-        PlayParticle(levelUpParticle);
-        moveSpeed += 0.1f;
-        animator.SetFloat("runSpeedMultiplier", animator.GetFloat("runSpeedMultiplier") + 0.05f);
-
+        mainCamera ??= Camera.main;
     }
 
     void OnEnable()
     {
         moveAction.action.Enable();
-        jumpAction.action.Enable();
-        jumpAction.action.performed += ctx => Jump();
+        attackAction.action.Enable();
+        attackAction.action.started += _ => Attack();
     }
 
     void OnDisable()
     {
         moveAction.action.Disable();
-        jumpAction.action.Disable();
-        jumpAction.action.performed -= ctx => Jump();
+        attackAction.action.Disable();
+        attackAction.action.started -= _ => Attack();
     }
 
     void Update()
     {
         inputVector = moveAction.action.ReadValue<Vector2>();
 
-        if (isGrounded)
-        {
-            animator.SetBool("isJumping_b", false);
-        }
+        if (attackAction.action.IsPressed()) Attack();
+
+        UpdateAnimationState();
     }
 
     void FixedUpdate()
@@ -90,9 +81,29 @@ public class PlayerController : MonoBehaviour
         rb.angularVelocity = Vector3.zero;
     }
 
+    public void SetLevelSystem(LevelSystem levelSystem)
+    {
+        this.levelSystem = levelSystem;
+        levelSystem.OnLevelChanged += LevelUp;
+    }
+
+    public void SetHealthSystem(HealthSystem healthSystem)
+    {
+        this.healthSystem = healthSystem;
+    }
+
+    void LevelUp(object sender, EventArgs e)
+    {
+        PlayParticle(levelUpParticle);
+        moveSpeed += 0.1f;
+        animator.SetFloat("runSpeedMultiplier", animator.GetFloat("runSpeedMultiplier") + 0.05f);
+        healthSystem.IncreaseRegenRate(0.5f);
+        healthSystem.IncreaseMaxHealth(50);
+    }
+
     void Move()
     {
-        Vector3 moveDirection = new Vector3(inputVector.x, 0, inputVector.y);
+        moveDirection = new Vector3(inputVector.x, 0, inputVector.y);
         moveDirection = mainCamera.transform.TransformDirection(moveDirection);
         moveDirection.y = 0;
         moveDirection.Normalize();
@@ -108,24 +119,59 @@ public class PlayerController : MonoBehaviour
             Quaternion targetRotation = Quaternion.LookRotation(moveDirection);
             rb.rotation = Quaternion.RotateTowards(rb.rotation, targetRotation, rotationSpeed * Time.fixedDeltaTime);
         }
-
-        animator.SetFloat("speed_f", rb.linearVelocity.magnitude);
     }
 
-    void Jump()
+    void UpdateAnimationState()
     {
-        if (isGrounded)
+        if (!attacking)
         {
-            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
-            animator.SetTrigger("jump_trig");
-            animator.SetBool("isJumping_b", true);
-            isGrounded = false;
+            ChangeAnimationState(rb.linearVelocity.magnitude < 0.1f ? IDLE : RUNNING);
         }
+    }
+
+    void ChangeAnimationState(string newState)
+    {
+        if (currentAnimationState == newState) return;
+        currentAnimationState = newState;
+        animator.CrossFadeInFixedTime(currentAnimationState, 0.2f);
+    }
+
+    void Attack()
+    {
+        if (!readyToAttack || attacking) return;
+
+        attacking = true;
+        readyToAttack = false;
+
+        Invoke(nameof(ResetAttack), attackSpeed);
+        Invoke(nameof(PerformAttackRaycast), attackDelay);
+
+        ChangeAnimationState(ATTACK_1);
+        attackCount = (attackCount + 1) % 2;
+    }
+
+    void ResetAttack()
+    {
+        attacking = false;
+        readyToAttack = true;
+    }
+
+    void PerformAttackRaycast()
+    {
+        if (Physics.Raycast(mainCamera.transform.position, mainCamera.transform.forward, out RaycastHit hit, attackDistance))
+        {
+            HitTarget(hit.point);
+        }
+    }
+
+    void HitTarget(Vector3 pos)
+    {
+        Debug.Log($"Hit target at {pos}");
     }
 
     void PlayParticle(ParticleSystem particleSystem)
     {
-        particleSystem.Play(particleSystem);
+        particleSystem.Play();
     }
 
     void OnCollisionEnter(Collision collision)
@@ -133,7 +179,6 @@ public class PlayerController : MonoBehaviour
         if (collision.gameObject.CompareTag("Ground"))
         {
             isGrounded = true;
-            animator.SetBool("isJumping_b", false);
         }
     }
 }
