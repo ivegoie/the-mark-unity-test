@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -7,26 +8,16 @@ public class PlayerController : MonoBehaviour
     [Header("Player Settings")]
     [SerializeField] float moveSpeed = 5f;
     [SerializeField] float rotationSpeed = 720f;
-    [SerializeField] float health = 100;
-    [SerializeField] float healthRegeneration = 10;
 
     [Header("VFX Settings")]
     [SerializeField] ParticleSystem levelUpParticle;
 
     [Header("Attacking")]
-    [SerializeField] float attackDistance = 3f;
-    [SerializeField] float attackDelay = 0.5f;
-    [SerializeField] float attackSpeed = 1f;
-    [SerializeField] float attackDamage = 1f;
+    [SerializeField] SwordAttack swordAttack;
 
     [Header("References")]
     [SerializeField] InputActionReference moveAction;
     [SerializeField] InputActionReference attackAction;
-
-
-    const string IDLE = "Idle";
-    const string RUNNING = "RunForward";
-    const string ATTACK_1 = "MeeleeAttack_OneHanded";
 
     Camera mainCamera;
     Rigidbody rb;
@@ -38,10 +29,7 @@ public class PlayerController : MonoBehaviour
 
     bool attacking = false;
     bool readyToAttack = true;
-    bool isGrounded;
-    int attackCount;
     float gravityModifier = 4;
-    string currentAnimationState;
 
     void Awake()
     {
@@ -50,12 +38,15 @@ public class PlayerController : MonoBehaviour
 
         Physics.gravity *= gravityModifier;
         mainCamera ??= Camera.main;
+
+        StartCoroutine(HealthRegeneration());
     }
 
     void OnEnable()
     {
         moveAction.action.Enable();
         attackAction.action.Enable();
+
         attackAction.action.started += _ => Attack();
     }
 
@@ -70,10 +61,20 @@ public class PlayerController : MonoBehaviour
     {
         inputVector = moveAction.action.ReadValue<Vector2>();
 
-        if (attackAction.action.IsPressed()) Attack();
+        if (!attacking)
+        {
+            if (attackAction.action.WasPressedThisFrame()) Attack();
+        }
 
         UpdateAnimationState();
+
+        if (attacking && !animator.GetCurrentAnimatorStateInfo(0).IsTag("Attack"))
+        {
+            attacking = false;
+            readyToAttack = true;
+        }
     }
+
 
     void FixedUpdate()
     {
@@ -92,11 +93,29 @@ public class PlayerController : MonoBehaviour
         this.healthSystem = healthSystem;
     }
 
+    public void GainExperience(int amount)
+    {
+        levelSystem.AddExperience(amount);
+    }
+
+    IEnumerator HealthRegeneration()
+    {
+        while (true)
+        {
+            yield return new WaitForSeconds(2f);
+
+            if (healthSystem.GetCurrentHealth() < healthSystem.GetMaxHealth())
+            {
+                healthSystem.Heal(Mathf.RoundToInt(healthSystem.GetRegenRate()));
+            }
+        }
+    }
+
     void LevelUp(object sender, EventArgs e)
     {
         PlayParticle(levelUpParticle);
         moveSpeed += 0.1f;
-        animator.SetFloat("runSpeedMultiplier", animator.GetFloat("runSpeedMultiplier") + 0.05f);
+        animator.SetFloat("runSpeedMultiplier_f", animator.GetFloat("runSpeedMultiplier_f") + 0.05f);
         healthSystem.IncreaseRegenRate(0.5f);
         healthSystem.IncreaseMaxHealth(50);
     }
@@ -121,19 +140,17 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    void UpdateAnimationState()
+    public void TakeDamage(int damage)
     {
-        if (!attacking)
-        {
-            ChangeAnimationState(rb.linearVelocity.magnitude < 0.1f ? IDLE : RUNNING);
-        }
+        healthSystem.TakeDamage(damage);
+
+        animator.SetTrigger("isHit_trig");
     }
 
-    void ChangeAnimationState(string newState)
+    void UpdateAnimationState()
     {
-        if (currentAnimationState == newState) return;
-        currentAnimationState = newState;
-        animator.CrossFadeInFixedTime(currentAnimationState, 0.2f);
+        float speed = rb.linearVelocity.magnitude;
+        animator.SetFloat("speed_f", speed);
     }
 
     void Attack()
@@ -143,42 +160,22 @@ public class PlayerController : MonoBehaviour
         attacking = true;
         readyToAttack = false;
 
-        Invoke(nameof(ResetAttack), attackSpeed);
-        Invoke(nameof(PerformAttackRaycast), attackDelay);
+        animator.SetTrigger("attack_trig");
 
-        ChangeAnimationState(ATTACK_1);
-        attackCount = (attackCount + 1) % 2;
+        swordAttack.EnableCollider();
+        Invoke(nameof(ResetAttack), 1);
     }
 
     void ResetAttack()
     {
         attacking = false;
         readyToAttack = true;
-    }
 
-    void PerformAttackRaycast()
-    {
-        if (Physics.Raycast(mainCamera.transform.position, mainCamera.transform.forward, out RaycastHit hit, attackDistance))
-        {
-            HitTarget(hit.point);
-        }
-    }
-
-    void HitTarget(Vector3 pos)
-    {
-        Debug.Log($"Hit target at {pos}");
+        swordAttack.DisableCollider();
     }
 
     void PlayParticle(ParticleSystem particleSystem)
     {
         particleSystem.Play();
-    }
-
-    void OnCollisionEnter(Collision collision)
-    {
-        if (collision.gameObject.CompareTag("Ground"))
-        {
-            isGrounded = true;
-        }
     }
 }
