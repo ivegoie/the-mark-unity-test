@@ -2,13 +2,14 @@ using UnityEngine;
 
 public class SwordAttack : MonoBehaviour
 {
-    [SerializeField] private float damage = 20f;
     private Collider swordCollider;
+    private PlayerController playerController;
 
     void Awake()
     {
         swordCollider = GetComponent<Collider>();
         swordCollider.enabled = false;
+        playerController = FindAnyObjectByType<PlayerController>();
     }
 
     private void OnTriggerEnter(Collider other)
@@ -18,7 +19,9 @@ public class SwordAttack : MonoBehaviour
             EnemyHealthSystem enemyHealth = other.GetComponent<EnemyHealthSystem>();
             if (enemyHealth != null)
             {
+                float damage = playerController.GetAttackDamage();
                 enemyHealth.TakeDamage(damage);
+                Debug.Log($"Sword hit {other.name}, dealing {damage} damage!");
             }
         }
     }

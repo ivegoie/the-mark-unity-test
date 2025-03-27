@@ -35,8 +35,7 @@ public class LevelWindow : MonoBehaviour
         if (healthBarImage == null) Debug.LogError("LevelWindow: healthBarImage is NULL. Check UI hierarchy!");
         if (healthText == null) Debug.LogError("LevelWindow: healthText is NULL. Check UI hierarchy!");
 
-        // Setup buttons for level experience
-        if (transform.Find("Level Buttons/add5") != null)
+        if (transform.Find("Level Buttons") != null)
         {
             transform.Find("Level Buttons/add5").GetComponent<Button>().onClick.AddListener(() => levelSystem?.AddExperience(5));
             transform.Find("Level Buttons/add50").GetComponent<Button>().onClick.AddListener(() => levelSystem?.AddExperience(50));
@@ -44,10 +43,9 @@ public class LevelWindow : MonoBehaviour
         }
         else
         {
-            Debug.LogError("LevelWindow: Level Buttons not found! Check your hierarchy.");
+            Debug.LogError("LevelWindow: Level Buttons not found!");
         }
 
-        // Setup buttons for health
         Transform healthButtons = transform.Find("Health Buttons");
         if (healthButtons != null)
         {
@@ -61,12 +59,9 @@ public class LevelWindow : MonoBehaviour
         }
         else
         {
-            Debug.LogError("LevelWindow: Health Buttons not found! Check your hierarchy.");
+            Debug.LogError("LevelWindow: Health Buttons not found!");
         }
     }
-
-
-
 
     void SetExerienceBarSize(float experienceNormalized)
     {

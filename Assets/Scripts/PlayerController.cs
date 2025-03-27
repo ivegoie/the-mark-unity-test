@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
 public class PlayerController : MonoBehaviour
 {
@@ -14,6 +15,8 @@ public class PlayerController : MonoBehaviour
 
     [Header("Attacking")]
     [SerializeField] SwordAttack swordAttack;
+    [SerializeField] float attackSpeed = 1f;
+    [SerializeField] float attackDamage = 10f;
 
     [Header("References")]
     [SerializeField] InputActionReference moveAction;
@@ -26,6 +29,7 @@ public class PlayerController : MonoBehaviour
     Vector2 inputVector;
     Vector3 moveDirection;
     HealthSystem healthSystem;
+    PlayerSkills playerSkills;
 
     bool attacking = false;
     bool readyToAttack = true;
@@ -35,6 +39,7 @@ public class PlayerController : MonoBehaviour
     {
         rb = GetComponent<Rigidbody>();
         animator = GetComponent<Animator>();
+        playerSkills = new PlayerSkills();
 
         Physics.gravity *= gravityModifier;
         mainCamera ??= Camera.main;
@@ -66,6 +71,26 @@ public class PlayerController : MonoBehaviour
             if (attackAction.action.WasPressedThisFrame()) Attack();
         }
 
+        if (Input.GetKeyDown(KeyCode.Alpha1))
+        {
+            UseSpinwild();
+        }
+
+        if (Input.GetKeyDown(KeyCode.Alpha2))
+        {
+            UseDash();
+        }
+
+        if (Input.GetKeyDown(KeyCode.Alpha3))
+        {
+            UseBuff();
+        }
+
+        if (Input.GetKeyDown(KeyCode.Alpha5))
+        {
+            UseFasterAttackSpeed();
+        }
+
         UpdateAnimationState();
 
         if (attacking && !animator.GetCurrentAnimatorStateInfo(0).IsTag("Attack"))
@@ -74,7 +99,6 @@ public class PlayerController : MonoBehaviour
             readyToAttack = true;
         }
     }
-
 
     void FixedUpdate()
     {
@@ -118,6 +142,7 @@ public class PlayerController : MonoBehaviour
         animator.SetFloat("runSpeedMultiplier_f", animator.GetFloat("runSpeedMultiplier_f") + 0.05f);
         healthSystem.IncreaseRegenRate(0.5f);
         healthSystem.IncreaseMaxHealth(50);
+        playerSkills.AddSkillPoint();
     }
 
     void Move()
@@ -160,11 +185,93 @@ public class PlayerController : MonoBehaviour
         attacking = true;
         readyToAttack = false;
 
+        animator.SetFloat("attackSpeedMultiplier", attackSpeed);
         animator.SetTrigger("attack_trig");
 
         swordAttack.EnableCollider();
-        Invoke(nameof(ResetAttack), 1);
+        Invoke(nameof(ResetAttack), 1f / attackSpeed);
     }
+
+
+    public float GetAttackSpeed() { return attackSpeed; }
+    public float GetAttackDamage() { return attackDamage; }
+
+    void UseSpinwild()
+    {
+        if (!playerSkills.IsSkillUnlocked(PlayerSkills.SkillType.Spinwild))
+        {
+            Debug.Log("Spinwild is not unlocked yet!");
+            return;
+        }
+
+        animator.ResetTrigger("attack_trig");
+        animator.SetTrigger("spinwild_trig");
+
+        swordAttack.EnableCollider();
+        Invoke(nameof(ResetAttack), 1.5f);
+    }
+
+    void UseDash()
+    {
+        if (!playerSkills.IsSkillUnlocked(PlayerSkills.SkillType.Dash))
+        {
+            Debug.Log("Dash is not unlocked yet!");
+            return;
+        }
+
+        Vector3 dashPosition = transform.position + transform.forward * 5f;
+        transform.position = dashPosition;
+
+    }
+
+    bool buffActive = false;
+    void UseBuff()
+    {
+        if (!playerSkills.IsSkillUnlocked(PlayerSkills.SkillType.Buff) || buffActive)
+        {
+            Debug.Log("Buff is not available!");
+            return;
+        }
+
+        buffActive = true;
+        attackDamage *= 1.5f;
+        healthSystem.TakeDamage(-10);
+
+
+        Invoke(nameof(ResetBuff), 10f);
+    }
+
+    void ResetBuff()
+    {
+        buffActive = false;
+        attackDamage /= 1.5f;
+        Debug.Log("Buff expired!");
+    }
+
+    bool fasterAttackActive = false;
+    void UseFasterAttackSpeed()
+    {
+        if (!playerSkills.IsSkillUnlocked(PlayerSkills.SkillType.FasterAttackSpeed) || fasterAttackActive)
+        {
+            Debug.Log("Faster Attack Speed is not available!");
+            return;
+        }
+
+        fasterAttackActive = true;
+        attackSpeed *= 1.5f;
+        animator.SetFloat("attackSpeedMultiplier", attackSpeed);
+
+
+        Invoke(nameof(ResetAttackSpeed), 5f);
+    }
+
+    void ResetAttackSpeed()
+    {
+        fasterAttackActive = false;
+        attackSpeed /= 1.5f;
+        animator.SetFloat("attackSpeedMultiplier", attackSpeed);
+    }
+
 
     void ResetAttack()
     {
@@ -172,6 +279,11 @@ public class PlayerController : MonoBehaviour
         readyToAttack = true;
 
         swordAttack.DisableCollider();
+    }
+
+    public PlayerSkills GetPlayerSkills()
+    {
+        return playerSkills;
     }
 
     void PlayParticle(ParticleSystem particleSystem)

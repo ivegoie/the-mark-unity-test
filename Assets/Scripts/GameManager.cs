@@ -5,13 +5,9 @@ public class GameManager : MonoBehaviour
 {
     [SerializeField] LevelWindow levelWindow;
     [SerializeField] PlayerController playerController;
+    [SerializeField] SkillTree skillTree;
 
-    [Header("Object Pooling")]
-    [SerializeField] List<GameObject> pooledObjects;
-    [SerializeField] GameObject objectToPool;
-    [SerializeField] int amountToPool;
-
-    void Awake()
+    void Start()
     {
         LevelSystem levelSystem = new LevelSystem();
         HealthSystem healthSystem = new HealthSystem(100, 2);
@@ -21,55 +17,12 @@ public class GameManager : MonoBehaviour
 
         playerController.SetLevelSystem(levelSystem);
         playerController.SetHealthSystem(healthSystem);
+
+        PlayerSkills playerSkills = playerController.GetPlayerSkills();
+        skillTree.SetPlayerSkills(playerSkills);
+
+        playerSkills.OnSkillUnlocked += (sender, e) => skillTree.UpdateSkillTreeUI();
+
+        skillTree.UpdateSkillTreeUI();
     }
-
-    void Start()
-    {
-        pooledObjects = new List<GameObject>();
-        GameObject temp;
-        for (int i = 0; i < amountToPool; i++)
-        {
-            temp = Instantiate(objectToPool);
-            temp.SetActive(false);
-            pooledObjects.Add(temp);
-        }
-    }
-
-    void Update()
-    {
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            SpawnEnemy();
-        }
-    }
-
-    void SpawnEnemy()
-    {
-        GameObject enemy = GetPooledObject();
-        if (enemy != null)
-        {
-            Vector3 randomSpawnPosition = new Vector3(Random.Range(260, 290), 0f, Random.Range(360, 390));
-
-            enemy.transform.position = randomSpawnPosition;
-            enemy.SetActive(true);
-        }
-        else
-        {
-            Debug.Log("No available enemies in pool!");
-        }
-    }
-
-
-    public GameObject GetPooledObject()
-    {
-        foreach (GameObject obj in pooledObjects)
-        {
-            if (!obj.activeInHierarchy)
-            {
-                return obj;
-            }
-        }
-        return null;
-    }
-
 }
